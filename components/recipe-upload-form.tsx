@@ -86,7 +86,15 @@ export function RecipeUploadForm() {
       )
 
       const data = await res.json()
-      setRecipes(data?.detail || data || [])
+
+      // ✅ ALWAYS FORCE ARRAY
+      const list = Array.isArray(data?.detail)
+        ? data.detail
+        : Array.isArray(data)
+        ? data
+        : []
+
+      setRecipes(list)
     } catch (err) {
       console.error("Failed to load recipes", err)
       setRecipes([])
