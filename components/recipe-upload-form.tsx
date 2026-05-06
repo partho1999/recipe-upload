@@ -5,6 +5,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
+  Table,
+  TableHeader,
+  TableBody,
+  TableRow,
+  TableHead,
+  TableCell,
+} from "@/components/ui/table"
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -22,63 +30,92 @@ import { Upload, FileText, ImageIcon, Loader2, CheckCircle2, AlertCircle } from 
 
 interface Category {
   id: number
-  name: string
+  title: string
+  image_path: string
 }
 
 export function RecipeUploadForm() {
   const [categories, setCategories] = useState<Category[]>([])
   const [loadingCategories, setLoadingCategories] = useState(true)
   const [categoryError, setCategoryError] = useState<string | null>(null)
-  
+
   const [title, setTitle] = useState("")
   const [categoryId, setCategoryId] = useState("")
   const [imageFile, setImageFile] = useState<File | null>(null)
   const [contentFile, setContentFile] = useState<File | null>(null)
-  
+
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submitStatus, setSubmitStatus] = useState<"idle" | "success" | "error">("idle")
   const [submitMessage, setSubmitMessage] = useState("")
-  
+
   const imageInputRef = useRef<HTMLInputElement>(null)
   const contentInputRef = useRef<HTMLInputElement>(null)
 
+  const [recipes, setRecipes] = useState<any[]>([])
+  const [loadingRecipes, setLoadingRecipes] = useState(false)
+
+  // ---------------- FETCH CATEGORIES ----------------
   useEffect(() => {
     async function fetchCategories() {
       try {
         const response = await fetch("https://t-squaretech.co/api/recipe/categories")
-        if (!response.ok) {
-          throw new Error("Failed to fetch categories")
-        }
+        if (!response.ok) throw new Error("Failed to fetch categories")
+
         const data = await response.json()
-        setCategories(data.data || data || [])
+        setCategories(data?.detail || [])
       } catch (error) {
         setCategoryError("Failed to load categories. Please refresh the page.")
-        console.error("Error fetching categories:", error)
+        console.error(error)
       } finally {
         setLoadingCategories(false)
       }
     }
-    
+
     fetchCategories()
   }, [])
 
+  // ---------------- FETCH RECIPES ----------------
+  const fetchRecipes = async (catId: string) => {
+    if (!catId) return
+
+    try {
+      setLoadingRecipes(true)
+
+      const res = await fetch(
+        `https://t-squaretech.co/api/recipe/recipe/list?category_id=${catId}`
+      )
+
+      const data = await res.json()
+      setRecipes(data?.detail || data || [])
+    } catch (err) {
+      console.error("Failed to load recipes", err)
+      setRecipes([])
+    } finally {
+      setLoadingRecipes(false)
+    }
+  }
+
+  // ---------------- AUTO LOAD RECIPES ----------------
+  useEffect(() => {
+    if (categoryId) {
+      fetchRecipes(categoryId)
+    }
+  }, [categoryId])
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      setImageFile(file)
-    }
+    if (file) setImageFile(file)
   }
 
   const handleContentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
-    if (file) {
-      setContentFile(file)
-    }
+    if (file) setContentFile(file)
   }
 
+  // ---------------- SUBMIT ----------------
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
+
     if (!title || !categoryId || !imageFile || !contentFile) {
       setSubmitStatus("error")
       setSubmitMessage("Please fill in all fields")
@@ -103,26 +140,28 @@ export function RecipeUploadForm() {
         }
       )
 
-      if (!response.ok) {
-        throw new Error("Failed to upload recipe")
-      }
+      if (!response.ok) throw new Error("Upload failed")
 
-      const result = await response.json()
+      await response.json()
+
       setSubmitStatus("success")
       setSubmitMessage("Recipe uploaded successfully!")
-      
-      // Reset form
+
+      // reset form
       setTitle("")
       setCategoryId("")
       setImageFile(null)
       setContentFile(null)
+
       if (imageInputRef.current) imageInputRef.current.value = ""
       if (contentInputRef.current) contentInputRef.current.value = ""
-      
+
+      // 🔥 refresh table after upload
+      await fetchRecipes(categoryId)
+
     } catch (error) {
       setSubmitStatus("error")
       setSubmitMessage("Failed to upload recipe. Please try again.")
-      console.error("Upload error:", error)
     } finally {
       setIsSubmitting(false)
     }
@@ -139,30 +178,37 @@ export function RecipeUploadForm() {
           Add a new recipe by filling in the details below
         </CardDescription>
       </CardHeader>
+
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Category Select */}
+
+          {/* CATEGORY */}
           <div className="space-y-2">
-            <Label htmlFor="category">Category</Label>
+            <Label>Category</Label>
+
             {loadingCategories ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Loader2 className="size-4 animate-spin" />
-                Loading categories...
+              <div className="flex items-center gap-2 text-sm">
+                <Loader2 className="animate-spin size-4" />
+                Loading...
               </div>
             ) : categoryError ? (
-              <div className="flex items-center gap-2 text-sm text-destructive">
-                <AlertCircle className="size-4" />
-                {categoryError}
-              </div>
+              <div className="text-red-500 text-sm">{categoryError}</div>
             ) : (
-              <Select value={categoryId} onValueChange={setCategoryId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select a category" />
+              <Select
+                value={categoryId}
+                onValueChange={(value) => {
+                  setCategoryId(value)
+                  fetchRecipes(value)
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
                 </SelectTrigger>
+
                 <SelectContent>
-                  {categories.map((category) => (
-                    <SelectItem key={category.id} value={String(category.id)}>
-                      {category.name}
+                  {categories.map((cat) => (
+                    <SelectItem key={cat.id} value={String(cat.id)}>
+                      {cat.title}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -170,122 +216,80 @@ export function RecipeUploadForm() {
             )}
           </div>
 
-          {/* Title Input */}
-          <div className="space-y-2">
-            <Label htmlFor="title">Recipe Title</Label>
-            <Input
-              id="title"
-              placeholder="Enter recipe title"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
+          {/* TITLE */}
+          <div>
+            <Label>Title</Label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+
+          {/* IMAGE */}
+          <div>
+            <Label>Image</Label>
+            <Input 
+              type="file" 
+              ref={imageInputRef} 
+              onChange={handleImageChange} 
             />
           </div>
 
-          {/* Image Upload */}
-          <div className="space-y-2">
-            <Label htmlFor="image">Recipe Image</Label>
-            <div className="flex items-center gap-3">
-              <label
-                htmlFor="image"
-                className="flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/50 transition-colors hover:border-muted-foreground/50 hover:bg-muted"
-              >
-                {imageFile ? (
-                  <div className="flex flex-col items-center gap-1 text-center">
-                    <ImageIcon className="size-6 text-primary" />
-                    <span className="text-xs text-muted-foreground">Selected</span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-1">
-                    <ImageIcon className="size-6 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Upload</span>
-                  </div>
-                )}
-              </label>
-              <input
-                ref={imageInputRef}
-                id="image"
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleImageChange}
-              />
-              {imageFile && (
-                <div className="flex-1 truncate text-sm text-muted-foreground">
-                  {imageFile.name}
-                </div>
-              )}
-            </div>
+          {/* CONTENT */}
+          <div>
+            <Label>PDF</Label>
+            <Input type="file" ref={contentInputRef} onChange={handleContentChange} />
           </div>
 
-          {/* Content/PDF Upload */}
-          <div className="space-y-2">
-            <Label htmlFor="content">Recipe Content (PDF)</Label>
-            <div className="flex items-center gap-3">
-              <label
-                htmlFor="content"
-                className="flex h-24 w-24 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-muted-foreground/25 bg-muted/50 transition-colors hover:border-muted-foreground/50 hover:bg-muted"
-              >
-                {contentFile ? (
-                  <div className="flex flex-col items-center gap-1 text-center">
-                    <FileText className="size-6 text-primary" />
-                    <span className="text-xs text-muted-foreground">Selected</span>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-1">
-                    <FileText className="size-6 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Upload</span>
-                  </div>
-                )}
-              </label>
-              <input
-                ref={contentInputRef}
-                id="content"
-                type="file"
-                accept=".pdf,application/pdf"
-                className="hidden"
-                onChange={handleContentChange}
-              />
-              {contentFile && (
-                <div className="flex-1 truncate text-sm text-muted-foreground">
-                  {contentFile.name}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Status Message */}
-          {submitStatus !== "idle" && (
-            <div
-              className={`flex items-center gap-2 rounded-lg p-3 text-sm ${
-                submitStatus === "success"
-                  ? "bg-green-50 text-green-700 dark:bg-green-950 dark:text-green-300"
-                  : "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300"
-              }`}
-            >
-              {submitStatus === "success" ? (
-                <CheckCircle2 className="size-4" />
-              ) : (
-                <AlertCircle className="size-4" />
-              )}
+          {/* STATUS */}
+          {submitMessage && (
+            <p className={submitStatus === "success" ? "text-green-600" : "text-red-600"}>
               {submitMessage}
-            </div>
+            </p>
           )}
 
-          {/* Submit Button */}
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 size-4 animate-spin" />
-                Uploading...
-              </>
-            ) : (
-              <>
-                <Upload className="mr-2 size-4" />
-                Upload Recipe
-              </>
-            )}
+          {/* BUTTON */}
+          <Button disabled={isSubmitting}>
+            {isSubmitting ? "Uploading..." : "Upload"}
           </Button>
         </form>
+
+        {/* ---------------- TABLE ---------------- */}
+        <div className="mt-6">
+          <h3 className="font-semibold mb-2">Recipes</h3>
+
+          {loadingRecipes ? (
+            <p>Loading...</p>
+          ) : (
+            <div className="w-full overflow-x-auto">
+              <Table className="min-w-[400px]">
+                
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>ID</TableHead>
+                    <TableHead>Title</TableHead>
+                  </TableRow>
+                </TableHeader>
+
+                <TableBody>
+                  {recipes.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={2} className="text-center text-muted-foreground">
+                        No recipes
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    recipes.map((r) => (
+                      <TableRow key={r.id}>
+                        <TableCell className="whitespace-nowrap">{r.id}</TableCell>
+                        <TableCell>{r.title}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+
+              </Table>
+            </div>
+          )}
+        </div>
+
       </CardContent>
     </Card>
   )
